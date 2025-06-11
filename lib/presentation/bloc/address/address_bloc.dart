@@ -23,28 +23,25 @@ class AddressBloc extends Bloc<AddressEvent, AddressState> {
     on<AddressFetchEvent>((event, emit) async {
       emit(AddressLoading());
       final userDetails = await _getUserProfile(NoParams());
-      await userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(AddressFailure(failure.message));
+        return null;
+      }, (details) => details.id);
+      if (userId == null) return;
+      final addressesResult = await _getUserAddresses(
+        GetUserAddressesParams(userId: userId),
+      );
+      addressesResult.fold(
         (failure) {
           emit(AddressFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final addressesResult = await _getUserAddresses(
-            GetUserAddressesParams(userId: userId),
-          );
-          addressesResult.fold(
-            (failure) {
-              emit(AddressFailure(failure.message));
-            },
-            (addressesList) {
-              _addresses = addressesList;
-              emit(
-                AddressSuccess(
-                  _addresses,
-                  message: 'Addresses fetched successfully',
-                ),
-              );
-            },
+        (addressesList) {
+          _addresses = addressesList;
+          emit(
+            AddressSuccess(
+              _addresses,
+              message: 'Addresses fetched successfully',
+            ),
           );
         },
       );
@@ -54,37 +51,31 @@ class AddressBloc extends Bloc<AddressEvent, AddressState> {
       emit(AddressLoading());
 
       final userDetails = await _getUserProfile(NoParams());
-      await userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(AddressFailure(failure.message));
+        return null;
+      }, (details) => details.id);
+      if (userId == null) return;
+      final address = AddressModel(
+        id: Uuid().v4(),
+        label: event.label,
+        state: event.state,
+        city: event.city,
+        addressLine1: event.addressLine1,
+        addressLine2: event.addressLine2,
+        pincode: event.pincode,
+      );
+      final result = await _addAddress(
+        AddAddressParams(userId: userId, address: address),
+      );
+      result.fold(
         (failure) {
           emit(AddressFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final address = AddressModel(
-            id: Uuid().v4(),
-            label: event.label,
-            state: event.state,
-            city: event.city,
-            addressLine1: event.addressLine1,
-            addressLine2: event.addressLine2,
-            pincode: event.pincode,
-          );
-          final result = await _addAddress(
-            AddAddressParams(userId: userId, address: address),
-          );
-          result.fold(
-            (failure) {
-              emit(AddressFailure(failure.message));
-            },
-            (_) {
-              _addresses.add(address);
-              emit(
-                AddressSuccess(
-                  _addresses,
-                  message: 'Address added successfully',
-                ),
-              );
-            },
+        (_) {
+          _addresses.add(address);
+          emit(
+            AddressSuccess(_addresses, message: 'Address added successfully'),
           );
         },
       );

@@ -30,58 +30,52 @@ class OrdersBloc extends Bloc<OrdersEvent, OrdersState> {
     : super(OrdersInitial()) {
     on<OrdersAddEvent>((event, emit) async {
       final userDetails = await _getUserProfile(NoParams());
-      await userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(OrdersFailure(failure.message));
+        return null;
+      }, (details) => details.id);
+      if (userId == null) return;
+      final address = event.address;
+      final totalAmount = event.items.fold(
+        0.0,
+        (sum, item) => sum + item.price,
+      );
+      final restaurants =
+          event.restaurants.map((r) => RestaurantModel.fromEntity(r)).toList();
+      final items =
+          event.items
+              .map((item) => RestaurantMenuItemModel.fromEntity(item))
+              .toList();
+      final order = OrderModel(
+        id: Uuid().v4(),
+        userId: userId,
+        restaurants: restaurants,
+        items: items,
+        totalAmount: totalAmount,
+        orderStatus: OrderStatus.pending,
+        placedOn: DateTime.now(),
+        address: AddressModel.fromEntity(address),
+      );
+
+      // update state locally
+      _orders = [..._orders, order];
+      emit(OrdersSuccess(_orders));
+
+      // add to orders in the backend
+      final result = await _addToOrders(
+        AddToOrdersParams(userId: userId, order: order),
+      );
+      result.fold(
         (failure) {
-          emit(OrdersSuccess(_orders, message: failure.message));
+          emit(OrdersSuccess(_orders..remove(order), message: failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final address = event.address;
-          final totalAmount = event.items.fold(
-            0.0,
-            (sum, item) => sum + item.price,
-          );
-          final restaurants =
-              event.restaurants
-                  .map((r) => RestaurantModel.fromEntity(r))
-                  .toList();
-          final items =
-              event.items
-                  .map((item) => RestaurantMenuItemModel.fromEntity(item))
-                  .toList();
-          final order = OrderModel(
-            id: Uuid().v4(),
-            userId: userId,
-            restaurants: restaurants,
-            items: items,
-            totalAmount: totalAmount,
-            orderStatus: OrderStatus.pending,
-            placedOn: DateTime.now(),
-            address: AddressModel.fromEntity(address),
-          );
-
-          // update state locally
-          _orders = [..._orders, order];
-          emit(OrdersSuccess(_orders));
-
-          // add to orders in the backend
-          final result = await _addToOrders(
-            AddToOrdersParams(userId: userId, order: order),
-          );
-          result.fold(
-            (failure) {
-              emit(
-                OrdersSuccess(_orders..remove(order), message: failure.message),
-              );
-            },
-            (_) {
-              // Successfully added to backend
-              // Clear the cart after successful order placement
-              getIt<CartBloc>().add(CartClearEvent());
-            },
-          );
+        (_) {
+          // Successfully added to backend
+          // Clear the cart after successful order placement
+          getIt<CartBloc>().add(CartClearEvent());
         },
       );
+
       // userDetails.f
     });
 
@@ -89,33 +83,31 @@ class OrdersBloc extends Bloc<OrdersEvent, OrdersState> {
       emit(OrdersLoading());
       final userDetails = await _getUserProfile(NoParams());
 
-      await userDetails.fold(
-        (failure) async => emit(OrdersFailure(failure.message)),
-        (details) async {
-          final userId = details.id;
-          final orderStream = await _getUserOrdersStream(
-            GetUserOrdersStreamParams(userId),
-          );
+      final userId = userDetails.fold((failure) {
+        emit(OrdersFailure(failure.message));
+        return null;
+      }, (details) => details.id);
+      if (userId == null) return;
+      final orderStream = await _getUserOrdersStream(
+        GetUserOrdersStreamParams(userId),
+      );
 
-          await orderStream.fold(
-            (failure) async {
-              emit(OrdersFailure(failure.message));
+      await orderStream.fold(
+        (failure) async {
+          emit(OrdersFailure(failure.message));
+        },
+        (stream) {
+          // Instead of awaiting the stream result, we'll use the Bloc's
+          // event handler to transform the stream events
+          emit(OrdersLoading());
+          return emit.forEach(
+            stream,
+            onData: (List<Order> orders) {
+              _orders = [...orders];
+              return OrdersSuccess(_orders);
             },
-            (stream) {
-              // Instead of awaiting the stream result, we'll use the Bloc's
-              // event handler to transform the stream events
-              emit(OrdersLoading());
-              return emit.forEach(
-                stream,
-                onData: (List<Order> orders) {
-                  _orders = [...orders];
-                  return OrdersSuccess(_orders);
-                },
-                onError:
-                    (error, _) =>
-                        OrdersFailure("Failed to fetch orders: $error"),
-              );
-            },
+            onError:
+                (error, _) => OrdersFailure("Failed to fetch orders: $error"),
           );
         },
       );

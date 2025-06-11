@@ -38,24 +38,23 @@ class CartBloc extends Bloc<CartEvent, CartState> {
     on<CartFetchEvent>((event, emit) async {
       emit(CartLoading());
       final userDetails = await _getUserProfile(NoParams());
-      await userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(CartFailure(failure.message));
+        return null;
+      }, (user) => user.id);
+
+      if (userId == null) return;
+
+      final cartItemsResult = await _getCartItems(
+        GetCartItemsParams(userId: userId),
+      );
+      cartItemsResult.fold(
         (failure) {
           emit(CartFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final cartItemsResult = await _getCartItems(
-            GetCartItemsParams(userId: userId),
-          );
-          cartItemsResult.fold(
-            (failure) {
-              emit(CartFailure(failure.message));
-            },
-            (cartItems) {
-              _cartItems = cartItems;
-              emit(CartSuccess(_cartItems, _address));
-            },
-          );
+        (cartItems) {
+          _cartItems = cartItems;
+          emit(CartSuccess(_cartItems, _address));
         },
       );
     });
@@ -103,34 +102,34 @@ class CartBloc extends Bloc<CartEvent, CartState> {
 
       // sync with backend
       final userDetails = await _getUserProfile(NoParams());
-      await userDetails.fold(
+
+      final userId = userDetails.fold((failure) {
+        emit(CartFailure(failure.message));
+        return null;
+      }, (user) => user.id);
+
+      if (userId == null) return;
+
+      final result = await _addToCart(
+        AddToCartParams(
+          userId: userId,
+          cartItem: CartItemModel(
+            id: cartId,
+            restaurant: RestaurantModel.fromEntity(event.restaurant),
+            menuItems: [
+              RestaurantMenuItemModel.fromEntity(event.restaurantMenuItem),
+            ],
+          ),
+          restaurant: event.restaurant,
+          menuItem: event.restaurantMenuItem,
+        ),
+      );
+      result.fold(
         (failure) {
           emit(CartFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final result = await _addToCart(
-            AddToCartParams(
-              userId: userId,
-              cartItem: CartItemModel(
-                id: cartId,
-                restaurant: RestaurantModel.fromEntity(event.restaurant),
-                menuItems: [
-                  RestaurantMenuItemModel.fromEntity(event.restaurantMenuItem),
-                ],
-              ),
-              restaurant: event.restaurant,
-              menuItem: event.restaurantMenuItem,
-            ),
-          );
-          result.fold(
-            (failure) {
-              emit(CartFailure(failure.message));
-            },
-            (_) {
-              // Successfully added to backend
-            },
-          );
+        (_) {
+          // Successfully added to backend
         },
       );
     });
@@ -163,23 +162,21 @@ class CartBloc extends Bloc<CartEvent, CartState> {
 
       // sync with backend
       final userDetails = await _getUserProfile(NoParams());
-      userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(CartFailure(failure.message));
+        return null;
+      }, (user) => user.id);
+
+      if (userId == null) return;
+      final result = await _removeFromCart(
+        RemoveFromCartParams(userId, event.menuItemId),
+      );
+      result.fold(
         (failure) {
           emit(CartFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final result = await _removeFromCart(
-            RemoveFromCartParams(userId, event.menuItemId),
-          );
-          result.fold(
-            (failure) {
-              emit(CartFailure(failure.message));
-            },
-            (_) {
-              // Successfully removed from backend
-            },
-          );
+        (_) {
+          // Successfully removed from backend
         },
       );
     });
@@ -197,21 +194,19 @@ class CartBloc extends Bloc<CartEvent, CartState> {
       emit(CartSuccess(_cartItems, _address));
       // sync with backend
       final userDetails = await _getUserProfile(NoParams());
-      userDetails.fold(
+      final userId = userDetails.fold((failure) {
+        emit(CartFailure(failure.message));
+        return null;
+      }, (user) => user.id);
+
+      if (userId == null) return;
+      final result = await _clearCart(ClearCartParams(userId));
+      result.fold(
         (failure) {
           emit(CartFailure(failure.message));
         },
-        (details) async {
-          final userId = details.id;
-          final result = await _clearCart(ClearCartParams(userId));
-          result.fold(
-            (failure) {
-              emit(CartFailure(failure.message));
-            },
-            (_) {
-              // Successfully cleared cart in backend
-            },
-          );
+        (_) {
+          // Successfully cleared cart in backend
         },
       );
     });

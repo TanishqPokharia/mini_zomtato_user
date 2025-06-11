@@ -16,6 +16,11 @@ Mini Zomato is a Flutter-based food delivery application that allows users to br
 - **Order History**: View past orders and their statuses
 - **Address Management**: Add, view, and delete delivery addresses
 
+## Demo
+
+
+https://github.com/user-attachments/assets/e52e9d70-429a-450b-b1fc-61d5bc9cc2ce
+
 
 ## Architecture / BLoC Flow Diagram
 
